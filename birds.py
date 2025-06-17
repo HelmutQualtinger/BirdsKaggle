@@ -5,6 +5,7 @@ import webbrowser
 from pathlib import Path
 import os
 import socketserver
+from PyPDF2 import PdfMerger
 
 # ——— your preamble & data prep ———
 df = pd.read_csv('bird_migration.csv')
@@ -13,7 +14,13 @@ all_data = pd.concat([
     df[df.bird_name=='Sanne'],
     df[df.bird_name=='Nico'],
 ])
-all_data['date_time'] = pd.to_datetime(all_data['date_time'])
+# extract the YYYY-MM-DD HH:MM:SS prefix and parse it, coercing any bad entries to NaT
+all_data['date_time'] = pd.to_datetime(
+    all_data['date_time']
+        .str.extract(r'(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})')[0],
+    format='%Y-%m-%d %H:%M:%S',
+    errors='coerce'
+)
 all_data['hour'] = all_data['date_time'].dt.hour
 
 # ——— figure 1: map ———
@@ -94,6 +101,28 @@ html = f"""
     </body>
 </html>
 """
+
+# Speichere alle drei Plots in einem einzigen mehrseitigen PDF
+# Benötigt: kaleido und PyPDF2
+#   pip install -U kaleido PyPDF2
+
+# 1) Einzelseiten erzeugen
+tmp_files = []
+for fig, fname in zip(
+    (fig1, fig2, fig3),
+    ("page1.pdf", "page2.pdf", "page3.pdf")
+):
+    fig.write_image(fname, format="pdf", engine="kaleido")
+    tmp_files.append(fname)
+
+# 2) Mehrseitiges PDF zusammenführen
+merger = PdfMerger()
+for f in tmp_files:
+    merger.append(f)
+output_pdf = "AllBirdPlots.pdf"
+merger.write(output_pdf)
+merger.close()
+
 import http.server
 
 # write the HTML out to a file
